@@ -1,8 +1,25 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { interviewApi } from '../api';
 import toast from 'react-hot-toast';
-import { Send, ChevronRight, Flag, Clock, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import ThemeToggle from '../components/ThemeToggle';
+import {
+  Send,
+  ChevronRight,
+  Flag,
+  Clock,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
+  HelpCircle,
+  Zap,
+  ArrowRight,
+  TrendingUp,
+  Award,
+  Sparkles,
+  CheckCircle2,
+  XCircle,
+} from 'lucide-react';
 
 function Timer({ expiresAt }) {
   const [remaining, setRemaining] = useState('');
@@ -12,7 +29,11 @@ function Timer({ expiresAt }) {
     if (!expiresAt) return;
     const tick = () => {
       const diff = new Date(expiresAt) - Date.now();
-      if (diff <= 0) { setRemaining('00:00'); return; }
+      if (diff <= 0) {
+        setRemaining('00:00');
+        setUrgent(true);
+        return;
+      }
       const m = Math.floor(diff / 60000);
       const s = Math.floor((diff % 60000) / 1000);
       setRemaining(`${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
@@ -23,9 +44,27 @@ function Timer({ expiresAt }) {
     return () => clearInterval(id);
   }, [expiresAt]);
 
+  if (!remaining) return null;
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: urgent ? 'var(--danger)' : 'var(--text-secondary)', fontWeight: 600, fontSize: '16px', fontFamily: 'JetBrains Mono, monospace' }}>
-      <Clock size={16} /> {remaining}
+    <div
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
+        padding: '6px 12px',
+        borderRadius: '8px',
+        background: urgent ? 'var(--danger-bg)' : 'var(--bg-elevated)',
+        border: `1px solid ${urgent ? 'var(--danger-border)' : 'var(--border)'}`,
+        color: urgent ? 'var(--danger)' : 'var(--text-primary)',
+        fontWeight: 700,
+        fontSize: '14px',
+        fontFamily: 'JetBrains Mono, monospace',
+      }}
+      title="Time remaining"
+    >
+      <Clock size={15} />
+      <span>{remaining}</span>
     </div>
   );
 }
@@ -41,16 +80,16 @@ export default function ActiveInterview() {
   const [phase, setPhase] = useState('loading'); // loading | starting | answering | evaluating | evaluated | completed
   const [questionNum, setQuestionNum] = useState(1);
   const [totalQuestions, setTotalQuestions] = useState(10);
-  const [submittedAnswerId, setSubmittedAnswerId] = useState(null);
   const answerRef = useRef(null);
 
   // Load session
   useEffect(() => {
-    interviewApi.getOne(id)
-      .then(res => {
+    interviewApi
+      .getOne(id)
+      .then((res) => {
         const s = res.data.session;
         setSession(s);
-        setTotalQuestions(s.configuration.questionCount);
+        setTotalQuestions(s.configuration?.questionCount || 10);
         const qs = res.data.questions || [];
         setQuestions(qs);
         if (s.status === 'draft') {
@@ -65,8 +104,12 @@ export default function ActiveInterview() {
           setPhase('starting');
         }
       })
-      .catch(() => { toast.error('Session not found'); navigate('/dashboard'); });
-  }, [id]);
+      .catch((err) => {
+        console.error(err);
+        toast.error('Session not found or unavailable');
+        navigate('/dashboard');
+      });
+  }, [id, navigate]);
 
   const startInterview = async () => {
     setPhase('loading');
@@ -77,7 +120,7 @@ export default function ActiveInterview() {
       setQuestions([res.data.question]);
       setQuestionNum(1);
       setPhase('answering');
-      answerRef.current?.focus();
+      setTimeout(() => answerRef.current?.focus(), 100);
     } catch (err) {
       toast.error(err.response?.data?.error?.message || 'Failed to start interview');
       setPhase('starting');
@@ -85,44 +128,53 @@ export default function ActiveInterview() {
   };
 
   const submitAnswer = async () => {
-    if (!answer.trim()) { toast.error('Please write an answer'); return; }
+    if (!answer.trim()) {
+      toast.error('Please write an answer before submitting');
+      return;
+    }
     setPhase('evaluating');
     try {
-      // Submit
-      const submitRes = await interviewApi.submitAnswer(id, { questionId: question._id, answerText: answer });
+      // 1. Submit answer
+      const submitRes = await interviewApi.submitAnswer(id, {
+        questionId: question._id,
+        answerText: answer,
+      });
       const answerId = submitRes.data.answer._id;
-      setSubmittedAnswerId(answerId);
 
-      // Evaluate
+      // 2. Evaluate answer
       const evalRes = await interviewApi.evaluateAnswer(id, answerId);
       setEvaluation(evalRes.data.answer);
       setPhase('evaluated');
     } catch (err) {
-      toast.error(err.response?.data?.error?.message || 'Evaluation failed');
+      toast.error(err.response?.data?.error?.message || 'Evaluation failed. Please try again.');
       setPhase('answering');
     }
   };
 
   const nextQuestion = async () => {
     if (questionNum >= totalQuestions) {
-      // Complete
+      // Session Complete
       try {
         await interviewApi.complete(id);
-        toast.success('Interview completed! Generating report...');
-        navigate(`/history`);
-      } catch { toast.error('Failed to complete session'); }
+        toast.success('Interview complete! Generating performance report...');
+        navigate(`/reports/${id}`);
+      } catch {
+        toast.error('Failed to complete session');
+        navigate(`/reports/${id}`);
+      }
       return;
     }
+
     setPhase('loading');
     setAnswer('');
     setEvaluation(null);
     try {
       const res = await interviewApi.nextQuestion(id);
       setQuestion(res.data.question);
-      setQuestions(prev => [...prev, res.data.question]);
+      setQuestions((prev) => [...prev, res.data.question]);
       setQuestionNum(res.data.questionNumber);
       setPhase('answering');
-      answerRef.current?.focus();
+      setTimeout(() => answerRef.current?.focus(), 100);
     } catch (err) {
       toast.error(err.response?.data?.error?.message || 'Failed to load next question');
       setPhase('evaluated');
@@ -130,162 +182,590 @@ export default function ActiveInterview() {
   };
 
   const endInterview = async () => {
-    if (!window.confirm('End the interview now? Your current progress will be saved.')) return;
+    if (!window.confirm('Are you sure you want to conclude the interview now? Your submitted answers will be scored and saved.')) {
+      return;
+    }
     try {
       await interviewApi.complete(id);
       toast.success('Interview ended. Generating report...');
+      navigate(`/reports/${id}`);
+    } catch {
       navigate('/history');
-    } catch { navigate('/history'); }
+    }
   };
 
   const scoreColor = (score) => {
+    if (score == null) return 'var(--text-muted)';
     if (score >= 80) return 'var(--success)';
     if (score >= 60) return 'var(--warning)';
     return 'var(--danger)';
   };
 
-  const progress = Math.round((questionNum / totalQuestions) * 100);
+  const progress = Math.min(100, Math.round((questionNum / (totalQuestions || 1)) * 100));
 
-  if (phase === 'loading') return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', flexDirection: 'column', gap: '16px' }}>
-      <div className="spinner" />
-      <p style={{ color: 'var(--text-secondary)' }}>Loading interview...</p>
-    </div>
-  );
+  // 1. Loading Phase
+  if (phase === 'loading') {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'var(--bg-primary)',
+          flexDirection: 'column',
+          gap: '20px',
+        }}
+      >
+        <div className="spinner" />
+        <div style={{ textAlign: 'center' }}>
+          <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '4px' }}>
+            AI Interviewer Working
+          </h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+            Preparing your next technical question...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
-  if (phase === 'starting') return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
-      <div className="card" style={{ maxWidth: '480px', textAlign: 'center' }}>
-        <span style={{ fontSize: '48px' }}>🎯</span>
-        <h2 style={{ fontSize: '24px', margin: '16px 0 8px' }}>Ready to Start?</h2>
-        <p style={{ color: 'var(--text-secondary)', marginBottom: '8px' }}><strong>{session?.configuration?.targetRole}</strong></p>
-        <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginBottom: '24px' }}>
-          {totalQuestions} questions · {session?.configuration?.timeLimitMinutes} min · {session?.configuration?.difficulty} difficulty
-        </p>
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-          <button className="btn btn-secondary" onClick={() => navigate('/dashboard')}>Cancel</button>
-          <button className="btn btn-primary btn-lg" onClick={startInterview} id="start-interview-btn">
-            <Zap size={18} /> Start Interview
+  // 2. Starting Phase
+  if (phase === 'starting') {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'var(--bg-primary)',
+          padding: '24px',
+        }}
+      >
+        <div
+          className="card"
+          style={{
+            maxWidth: '520px',
+            width: '100%',
+            textAlign: 'center',
+            padding: '36px',
+          }}
+        >
+          <div
+            style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '16px',
+              background: 'var(--accent-subtle)',
+              border: '1px solid var(--border-accent)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 20px',
+              color: 'var(--accent)',
+            }}
+          >
+            <Zap size={32} />
+          </div>
+
+          <h2 style={{ fontSize: '24px', fontWeight: 800, marginBottom: '8px' }}>
+            Ready to Begin?
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '15px', marginBottom: '18px' }}>
+            You are about to start a practice technical interview for:
+          </p>
+
+          <div
+            style={{
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border)',
+              borderRadius: '12px',
+              padding: '16px',
+              marginBottom: '24px',
+              textAlign: 'left',
+            }}
+          >
+            <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>
+              {session?.configuration?.targetRole || 'Software Engineer'}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', fontSize: '13px' }}>
+              <span className="badge badge-accent">
+                {session?.configuration?.questionCount || totalQuestions} Questions
+              </span>
+              <span className="badge badge-info">
+                {session?.configuration?.timeLimitMinutes || 30} Minutes
+              </span>
+              <span className="badge badge-neutral" style={{ textTransform: 'capitalize' }}>
+                {session?.configuration?.difficulty || 'Medium'}
+              </span>
+              <span className="badge badge-neutral" style={{ textTransform: 'capitalize' }}>
+                {session?.configuration?.interviewType || 'Technical'}
+              </span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => navigate('/dashboard')}
+            >
+              Exit to Dashboard
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary btn-lg"
+              onClick={startInterview}
+              id="start-interview-btn"
+              style={{ gap: '8px' }}
+            >
+              <Zap size={18} /> Start Practice Session
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. Completed Phase
+  if (phase === 'completed') {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'var(--bg-primary)',
+          padding: '24px',
+        }}
+      >
+        <div className="card" style={{ maxWidth: '480px', width: '100%', textAlign: 'center', padding: '36px' }}>
+          <CheckCircle size={52} color="var(--success)" style={{ margin: '0 auto 16px' }} />
+          <h2 style={{ fontSize: '24px', fontWeight: 800, marginBottom: '8px' }}>
+            Interview Already Concluded
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '24px' }}>
+            This interview session is marked as completed. You can view your full diagnostic feedback report.
+          </p>
+          <button
+            type="button"
+            className="btn btn-primary w-full"
+            onClick={() => navigate(`/reports/${id}`)}
+            style={{ justifyContent: 'center' }}
+          >
+            View Evaluation Report
           </button>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
 
+  // 4. Active Answering & Evaluation Phase
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', padding: '24px' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '16px 24px' }}>
-        <div>
-          <h2 style={{ fontSize: '16px', fontWeight: 700 }}>{session?.configuration?.targetRole}</h2>
-          <p style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
-            {session?.configuration?.interviewType} · {session?.configuration?.difficulty} · Q{questionNum}/{totalQuestions}
-          </p>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <Timer expiresAt={session?.expiresAt} />
-          <button className="btn btn-danger btn-sm" onClick={endInterview} id="end-interview-btn"><Flag size={14} /> End</button>
-        </div>
-      </div>
-
-      {/* Progress */}
-      <div className="progress-bar" style={{ marginBottom: '32px' }}>
-        <div className="progress-fill" style={{ width: `${progress}%` }} />
-      </div>
-
-      {/* Question */}
-      {question && (
-        <div className="card" style={{ marginBottom: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-            <span className="badge badge-accent">Q{questionNum}</span>
-            <span className="badge badge-info" style={{ textTransform: 'capitalize' }}>{question.category}</span>
-            {question.technology && <span className="badge badge-accent">{question.technology}</span>}
+    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', paddingBottom: '60px' }}>
+      {/* Top Session Bar */}
+      <header
+        style={{
+          background: 'var(--bg-secondary)',
+          borderBottom: '1px solid var(--border)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 90,
+          backdropFilter: 'blur(12px)',
+        }}
+      >
+        <div
+          className="container"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            height: '70px',
+            gap: '16px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '8px',
+                background: 'var(--gradient-accent)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#fff',
+                fontWeight: 800,
+                fontSize: '15px',
+              }}
+            >
+              ⚡
+            </span>
+            <div>
+              <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                {session?.configuration?.targetRole || 'Interview Session'}
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                Question {questionNum} of {totalQuestions} • {session?.configuration?.difficulty || 'Medium'}
+              </div>
+            </div>
           </div>
-          <p style={{ fontSize: '18px', lineHeight: 1.7, color: 'var(--text-primary)' }}>{question.questionText}</p>
-        </div>
-      )}
 
-      {/* Answer area */}
-      {(phase === 'answering' || phase === 'evaluating') && (
-        <div className="card" style={{ marginBottom: '24px' }}>
-          <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '10px' }}>Your Answer</label>
-          <textarea
-            ref={answerRef}
-            className="answer-editor"
-            value={answer}
-            onChange={e => setAnswer(e.target.value)}
-            placeholder="Type your answer here... Be as detailed and specific as possible."
-            disabled={phase === 'evaluating'}
-            id="answer-textarea"
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <Timer expiresAt={session?.expiresAt} />
+            <ThemeToggle />
+            <button
+              type="button"
+              className="btn btn-danger btn-sm"
+              onClick={endInterview}
+              id="end-interview-btn"
+              style={{ gap: '6px' }}
+            >
+              <Flag size={14} /> End Early
+            </button>
+          </div>
+        </div>
+
+        {/* Linear Progress Bar */}
+        <div style={{ height: '3px', background: 'var(--bg-elevated)', width: '100%' }}>
+          <div
+            style={{
+              height: '100%',
+              width: `${progress}%`,
+              background: 'var(--gradient-accent)',
+              transition: 'width 0.4s ease',
+            }}
           />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px', gap: '10px' }}>
-            <button className="btn btn-secondary" onClick={endInterview}>End Early</button>
-            <button className="btn btn-primary" onClick={submitAnswer} disabled={phase === 'evaluating' || !answer.trim()} id="submit-answer-btn">
-              {phase === 'evaluating' ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Evaluating...</> : <><Send size={16} /> Submit Answer</>}
-            </button>
-          </div>
         </div>
-      )}
+      </header>
 
-      {/* Evaluation result */}
-      {phase === 'evaluated' && evaluation && (
-        <div className="card" style={{ marginBottom: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-            <CheckCircle size={24} color="var(--success)" />
-            <h3 style={{ fontSize: '18px' }}>Evaluation Complete</h3>
-            <div style={{ marginLeft: 'auto', textAlign: 'center' }}>
-              <div style={{ fontSize: '36px', fontWeight: 800, color: scoreColor(evaluation.overallScore) }}>{evaluation.overallScore ?? '—'}</div>
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Overall Score</div>
+      {/* Main Content Area */}
+      <div className="container-narrow" style={{ paddingTop: '32px' }}>
+        {/* Question Card */}
+        {question && (
+          <div className="card" style={{ marginBottom: '24px', borderLeft: '4px solid var(--accent)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
+              <span className="badge badge-accent">Question {questionNum} of {totalQuestions}</span>
+              {question.category && (
+                <span className="badge badge-info" style={{ textTransform: 'capitalize' }}>
+                  {question.category}
+                </span>
+              )}
+              {question.technology && (
+                <span className="badge badge-neutral">{question.technology}</span>
+              )}
+            </div>
+            <h2
+              style={{
+                fontSize: '20px',
+                fontWeight: 700,
+                lineHeight: 1.5,
+                color: 'var(--text-primary)',
+              }}
+            >
+              {question.questionText}
+            </h2>
+          </div>
+        )}
+
+        {/* Answer Input Area */}
+        {(phase === 'answering' || phase === 'evaluating') && (
+          <div className="card" style={{ marginBottom: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <label htmlFor="answer-textarea" className="form-label" style={{ margin: 0 }}>
+                Your Technical Response
+              </label>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                {answer.length} characters • Markdown/code blocks welcome
+              </span>
+            </div>
+
+            <textarea
+              ref={answerRef}
+              className="answer-editor"
+              value={answer}
+              onChange={(e) => setAnswer(e.target.value)}
+              placeholder="Provide a structured, comprehensive answer with architectural decisions, trade-offs, and examples..."
+              disabled={phase === 'evaluating'}
+              id="answer-textarea"
+            />
+
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginTop: '16px',
+                flexWrap: 'wrap',
+                gap: '12px',
+              }}
+            >
+              <span style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>
+                💡 Tip: Explain <strong>why</strong>, not just <strong>what</strong>, to score higher in Depth and Clarity.
+              </span>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={submitAnswer}
+                  disabled={phase === 'evaluating' || !answer.trim()}
+                  id="submit-answer-btn"
+                  style={{ gap: '8px' }}
+                >
+                  {phase === 'evaluating' ? (
+                    <>
+                      <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                      Evaluating with Multi-LLM...
+                    </>
+                  ) : (
+                    <>
+                      <Send size={16} /> Submit Answer
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
+        )}
 
-          {/* Scores grid */}
-          {evaluation.evaluation && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', marginBottom: '20px' }}>
-              {Object.entries(evaluation.evaluation).map(([key, val]) => (
-                <div key={key} style={{ textAlign: 'center', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-sm)', padding: '12px' }}>
-                  <div style={{ fontSize: '24px', fontWeight: 700, color: scoreColor(val) }}>{val}</div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'capitalize', marginTop: '4px' }}>{key}</div>
+        {/* Instant Evaluation Card */}
+        {phase === 'evaluated' && evaluation && (
+          <div
+            className="card"
+            style={{
+              marginBottom: '24px',
+              background: 'var(--gradient-card)',
+              borderColor: 'var(--border-accent)',
+              boxShadow: 'var(--shadow-card-hover)',
+            }}
+          >
+            {/* Overall Score Header */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingBottom: '20px',
+                borderBottom: '1px solid var(--border)',
+                marginBottom: '20px',
+                flexWrap: 'wrap',
+                gap: '16px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div
+                  style={{
+                    width: '44px',
+                    height: '44px',
+                    borderRadius: '12px',
+                    background: 'var(--success-bg)',
+                    color: 'var(--success)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Sparkles size={24} />
                 </div>
-              ))}
-            </div>
-          )}
+                <div>
+                  <h3 style={{ fontSize: '18px', fontWeight: 800 }}>Evaluation Complete</h3>
+                  <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                    Immediate multi-criteria assessment by AI evaluator
+                  </p>
+                </div>
+              </div>
 
-          {evaluation.detailedFeedback && (
-            <div style={{ background: 'var(--bg-elevated)', borderRadius: 'var(--radius-sm)', padding: '16px', marginBottom: '16px', fontSize: '14px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
-              {evaluation.detailedFeedback}
+              <div style={{ textAlign: 'right' }}>
+                <div
+                  style={{
+                    fontSize: '38px',
+                    fontWeight: 800,
+                    color: scoreColor(evaluation.overallScore),
+                    lineHeight: 1,
+                  }}
+                >
+                  {evaluation.overallScore ?? '—'}
+                  <span style={{ fontSize: '16px', color: 'var(--text-muted)', fontWeight: 500 }}>
+                    /100
+                  </span>
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  Question Score
+                </div>
+              </div>
             </div>
-          )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
-            {evaluation.strengths?.length > 0 && (
-              <div>
-                <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--success)', marginBottom: '8px' }}>✓ Strengths</p>
-                <ul style={{ paddingLeft: '16px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                  {evaluation.strengths.map((s, i) => <li key={i} style={{ marginBottom: '4px' }}>{s}</li>)}
-                </ul>
+            {/* Criteria Breakdown Grid */}
+            {evaluation.evaluation && (
+              <div style={{ marginBottom: '22px' }}>
+                <div style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '10px' }}>
+                  Score by Evaluation Criteria:
+                </div>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))',
+                    gap: '10px',
+                  }}
+                >
+                  {Object.entries(evaluation.evaluation).map(([key, val]) => (
+                    <div
+                      key={key}
+                      style={{
+                        textAlign: 'center',
+                        background: 'var(--bg-elevated)',
+                        borderRadius: '10px',
+                        padding: '12px 8px',
+                        border: '1px solid var(--border)',
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: '22px',
+                          fontWeight: 800,
+                          color: scoreColor(val),
+                        }}
+                      >
+                        {val}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '11px',
+                          color: 'var(--text-muted)',
+                          textTransform: 'capitalize',
+                          marginTop: '2px',
+                        }}
+                      >
+                        {key}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
-            {evaluation.improvements?.length > 0 && (
-              <div>
-                <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--warning)', marginBottom: '8px' }}>↑ Improvements</p>
-                <ul style={{ paddingLeft: '16px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                  {evaluation.improvements.map((s, i) => <li key={i} style={{ marginBottom: '4px' }}>{s}</li>)}
-                </ul>
+
+            {/* Detailed Feedback Text */}
+            {evaluation.detailedFeedback && (
+              <div
+                style={{
+                  background: 'var(--bg-elevated)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  marginBottom: '20px',
+                  fontSize: '14.5px',
+                  lineHeight: 1.7,
+                  color: 'var(--text-secondary)',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                  AI Examiner Assessment:
+                </div>
+                {evaluation.detailedFeedback}
               </div>
             )}
-          </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button className="btn btn-primary" onClick={nextQuestion} id="next-question-btn">
-              {questionNum >= totalQuestions ? <><CheckCircle size={16} /> Complete Interview</> : <><ChevronRight size={16} /> Next Question</>}
-            </button>
+            {/* Strengths & Improvements */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                gap: '16px',
+                marginBottom: '24px',
+              }}
+            >
+              {evaluation.strengths?.length > 0 && (
+                <div
+                  style={{
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--success-border)',
+                    borderRadius: '12px',
+                    padding: '16px',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      color: 'var(--success)',
+                      fontWeight: 700,
+                      fontSize: '13.5px',
+                      marginBottom: '10px',
+                    }}
+                  >
+                    <CheckCircle2 size={16} /> Key Strengths
+                  </div>
+                  <ul style={{ paddingLeft: '18px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                    {evaluation.strengths.map((s, idx) => (
+                      <li key={idx} style={{ marginBottom: '6px', lineHeight: 1.5 }}>
+                        {s}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {evaluation.improvements?.length > 0 && (
+                <div
+                  style={{
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--warning-border)',
+                    borderRadius: '12px',
+                    padding: '16px',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      color: 'var(--warning)',
+                      fontWeight: 700,
+                      fontSize: '13.5px',
+                      marginBottom: '10px',
+                    }}
+                  >
+                    <TrendingUp size={16} /> Recommended Improvements
+                  </div>
+                  <ul style={{ paddingLeft: '18px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                    {evaluation.improvements.map((s, idx) => (
+                      <li key={idx} style={{ marginBottom: '6px', lineHeight: 1.5 }}>
+                        {s}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            {/* Next Action Button */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn btn-primary btn-lg"
+                onClick={nextQuestion}
+                id="next-question-btn"
+                style={{ gap: '8px' }}
+              >
+                {questionNum >= totalQuestions ? (
+                  <>
+                    <CheckCircle size={18} /> Complete Interview & View Report
+                  </>
+                ) : (
+                  <>
+                    <span>Next Question ({questionNum + 1}/{totalQuestions})</span>
+                    <ChevronRight size={18} />
+                  </>
+                )}
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
-
-// Import Zap for starting card
-function Zap({ size }) { return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>; }

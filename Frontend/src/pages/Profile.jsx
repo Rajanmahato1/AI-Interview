@@ -2,15 +2,47 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { profileApi } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import toast from 'react-hot-toast';
-import { Save, ArrowLeft, User } from 'lucide-react';
+import AppLayout from '../components/AppLayout';
+import {
+  Save,
+  User,
+  Sliders,
+  Code2,
+  Sparkles,
+  Sun,
+  Moon,
+  Clock,
+  Check,
+  Shield,
+} from 'lucide-react';
 
-const SKILLS_SUGGESTIONS = ['JavaScript', 'React', 'Node.js', 'Python', 'Java', 'TypeScript', 'SQL', 'MongoDB', 'Docker', 'AWS', 'Kubernetes', 'GraphQL', 'System Design', 'DSA'];
+const SKILLS_SUGGESTIONS = [
+  'JavaScript',
+  'TypeScript',
+  'React',
+  'Node.js',
+  'Python',
+  'Java',
+  'SQL',
+  'MongoDB',
+  'Docker',
+  'AWS',
+  'Kubernetes',
+  'GraphQL',
+  'System Design',
+  'DSA',
+  'Next.js',
+  'Redis',
+];
 
 export default function Profile() {
   const { user, updateUser } = useAuth();
+  const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+
   const [form, setForm] = useState({
     name: user?.name || '',
     targetRole: user?.profile?.targetRole || '',
@@ -18,23 +50,47 @@ export default function Profile() {
     preferredDifficulty: user?.profile?.preferredDifficulty || 'medium',
     defaultDuration: user?.profile?.defaultDuration || 30,
     adaptiveEnabled: user?.profile?.adaptiveEnabled ?? true,
-    theme: user?.profile?.theme || 'dark',
+    theme: user?.profile?.theme || theme || 'dark',
     skills: user?.profile?.skills || [],
   });
 
+  useEffect(() => {
+    if (user) {
+      setForm((prev) => ({
+        ...prev,
+        name: user.name || '',
+        targetRole: user.profile?.targetRole || '',
+        experienceLevel: user.profile?.experienceLevel || 'junior',
+        preferredDifficulty: user.profile?.preferredDifficulty || 'medium',
+        defaultDuration: user.profile?.defaultDuration || 30,
+        adaptiveEnabled: user.profile?.adaptiveEnabled ?? true,
+        theme: user.profile?.theme || theme,
+        skills: user.profile?.skills || [],
+      }));
+    }
+  }, [user, theme]);
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setForm(f => ({ ...f, [name]: type === 'checkbox' ? checked : value }));
+    const nextVal = type === 'checkbox' ? checked : value;
+    setForm((f) => ({ ...f, [name]: nextVal }));
+
+    if (name === 'theme') {
+      setTheme(value);
+    }
   };
 
   const toggleSkill = (skill) => {
-    setForm(f => ({
+    setForm((f) => ({
       ...f,
-      skills: f.skills.includes(skill) ? f.skills.filter(s => s !== skill) : [...f.skills, skill],
+      skills: f.skills.includes(skill)
+        ? f.skills.filter((s) => s !== skill)
+        : [...f.skills, skill],
     }));
   };
 
-  const handleSave = async () => {
+  const handleSave = async (e) => {
+    e?.preventDefault();
     setLoading(true);
     try {
       const res = await profileApi.update({
@@ -50,92 +106,299 @@ export default function Profile() {
         },
       });
       updateUser(res.data.user);
-      toast.success('Profile updated!');
+      setTheme(form.theme);
+      toast.success('Profile and preferences updated!');
     } catch (err) {
       toast.error(err.response?.data?.error?.message || 'Update failed');
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', paddingTop: '80px' }}>
-      <nav className="navbar"><span className="navbar-brand">⚡ InterviewAI</span><div className="navbar-links"><button className="btn btn-secondary btn-sm" onClick={() => navigate('/dashboard')}><ArrowLeft size={14} /> Dashboard</button></div></nav>
-      <div style={{ maxWidth: '640px', margin: '0 auto', padding: '32px 24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '32px' }}>
-          <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'var(--gradient-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', fontWeight: 800 }}>
-            {user?.name?.[0]?.toUpperCase()}
+    <AppLayout>
+      <div style={{ maxWidth: '780px', margin: '0 auto' }}>
+        {/* Header with Avatar */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '20px',
+            marginBottom: '32px',
+            flexWrap: 'wrap',
+          }}
+        >
+          <div
+            style={{
+              width: '72px',
+              height: '72px',
+              borderRadius: '20px',
+              background: 'var(--gradient-accent)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '28px',
+              fontWeight: 800,
+              color: '#ffffff',
+              boxShadow: 'var(--shadow-card)',
+            }}
+          >
+            {user?.name ? user.name[0].toUpperCase() : 'U'}
           </div>
-          <div><h1 style={{ fontSize: '24px' }}>Profile & Settings</h1><p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>{user?.email}</p></div>
+          <div>
+            <h1 style={{ fontSize: '28px', fontWeight: 800, marginBottom: '4px' }}>
+              Profile & Preferences
+            </h1>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+              {user?.email} • Account managed via Secure JWT
+            </p>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {/* Personal Info */}
           <div className="card">
-            <h3 style={{ fontSize: '16px', marginBottom: '20px', color: 'var(--accent-light)' }}>Personal Info</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div className="form-group">
-                <label className="form-label">Full Name</label>
-                <input name="name" value={form.name} onChange={handleChange} className="form-input" id="profile-name" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+              <div
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '10px',
+                  background: 'var(--accent-subtle)',
+                  color: 'var(--accent)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <User size={18} />
               </div>
+              <div>
+                <h3 style={{ fontSize: '17px', fontWeight: 700 }}>Personal Information</h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Your candidate name and target title</p>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '18px' }}>
               <div className="form-group">
-                <label className="form-label">Target Role</label>
-                <input name="targetRole" value={form.targetRole} onChange={handleChange} className="form-input" placeholder="e.g. Full Stack Developer" id="profile-role" />
+                <label className="form-label" htmlFor="profile-name">
+                  Full Name
+                </label>
+                <input
+                  name="name"
+                  id="profile-name"
+                  value={form.name}
+                  onChange={handleChange}
+                  className="form-input"
+                  placeholder="Your full name"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" htmlFor="profile-role">
+                  Target Engineering Role
+                </label>
+                <input
+                  name="targetRole"
+                  id="profile-role"
+                  value={form.targetRole}
+                  onChange={handleChange}
+                  className="form-input"
+                  placeholder="e.g. Senior Full Stack Engineer"
+                />
               </div>
             </div>
           </div>
 
+          {/* Interview Preferences */}
           <div className="card">
-            <h3 style={{ fontSize: '16px', marginBottom: '20px', color: 'var(--accent-light)' }}>Interview Preferences</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+              <div
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '10px',
+                  background: 'var(--info-bg)',
+                  color: 'var(--info)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Sliders size={18} />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '17px', fontWeight: 700 }}>Interview Defaults</h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Prepopulate new session settings</p>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '18px', marginBottom: '20px' }}>
               <div className="form-group">
-                <label className="form-label">Experience Level</label>
-                <select name="experienceLevel" value={form.experienceLevel} onChange={handleChange} className="form-select" id="profile-level">
-                  <option value="fresher">Fresher</option>
-                  <option value="junior">Junior</option>
-                  <option value="mid">Mid-level</option>
-                  <option value="senior">Senior</option>
+                <label className="form-label" htmlFor="profile-level">
+                  Experience Level
+                </label>
+                <select
+                  name="experienceLevel"
+                  id="profile-level"
+                  value={form.experienceLevel}
+                  onChange={handleChange}
+                  className="form-select"
+                >
+                  <option value="fresher">Fresher (0–1 yr)</option>
+                  <option value="junior">Junior (1–3 yrs)</option>
+                  <option value="mid">Mid-level (3–6 yrs)</option>
+                  <option value="senior">Senior (6+ yrs)</option>
                 </select>
               </div>
+
               <div className="form-group">
-                <label className="form-label">Preferred Difficulty</label>
-                <select name="preferredDifficulty" value={form.preferredDifficulty} onChange={handleChange} className="form-select" id="profile-difficulty">
+                <label className="form-label" htmlFor="profile-difficulty">
+                  Default Difficulty
+                </label>
+                <select
+                  name="preferredDifficulty"
+                  id="profile-difficulty"
+                  value={form.preferredDifficulty}
+                  onChange={handleChange}
+                  className="form-select"
+                >
                   <option value="easy">Easy</option>
                   <option value="medium">Medium</option>
                   <option value="hard">Hard</option>
                 </select>
               </div>
+
               <div className="form-group">
-                <label className="form-label">Default Duration (min)</label>
-                <input name="defaultDuration" type="number" min={5} max={120} value={form.defaultDuration} onChange={handleChange} className="form-input" id="profile-duration" />
+                <label className="form-label" htmlFor="profile-duration">
+                  Default Time Limit (min)
+                </label>
+                <input
+                  name="defaultDuration"
+                  id="profile-duration"
+                  type="number"
+                  min={5}
+                  max={120}
+                  value={form.defaultDuration}
+                  onChange={handleChange}
+                  className="form-input"
+                />
               </div>
+
               <div className="form-group">
-                <label className="form-label">Theme</label>
-                <select name="theme" value={form.theme} onChange={handleChange} className="form-select" id="profile-theme">
-                  <option value="dark">Dark</option>
-                  <option value="light">Light</option>
+                <label className="form-label" htmlFor="profile-theme">
+                  Color Theme
+                </label>
+                <select
+                  name="theme"
+                  id="profile-theme"
+                  value={form.theme}
+                  onChange={handleChange}
+                  className="form-select"
+                >
+                  <option value="dark">Dark Theme (Deep Navy)</option>
+                  <option value="light">Light Theme (Clean Slate)</option>
                 </select>
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '16px' }}>
-              <input type="checkbox" name="adaptiveEnabled" checked={form.adaptiveEnabled} onChange={handleChange} id="profile-adaptive" style={{ width: '16px', height: '16px', accentColor: 'var(--accent)' }} />
-              <label htmlFor="profile-adaptive" style={{ fontSize: '14px', color: 'var(--text-secondary)', cursor: 'pointer' }}>Enable adaptive follow-up questions by default</label>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '14px',
+                background: 'var(--bg-elevated)',
+                borderRadius: '10px',
+                border: '1px solid var(--border)',
+              }}
+            >
+              <input
+                type="checkbox"
+                name="adaptiveEnabled"
+                id="profile-adaptive"
+                checked={form.adaptiveEnabled}
+                onChange={handleChange}
+                style={{ width: '18px', height: '18px', accentColor: 'var(--accent)', cursor: 'pointer' }}
+              />
+              <label htmlFor="profile-adaptive" style={{ fontSize: '14px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                Default to adaptive probing questions during active practice sessions
+              </label>
             </div>
           </div>
 
+          {/* Primary Skills Chips */}
           <div className="card">
-            <h3 style={{ fontSize: '16px', marginBottom: '16px', color: 'var(--accent-light)' }}>Skills</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+              <div
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '10px',
+                  background: 'var(--warning-bg)',
+                  color: 'var(--warning)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Code2 size={18} />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '17px', fontWeight: 700 }}>Primary Technical Stack</h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                  Click to select technologies that appear in your question generation pool
+                </p>
+              </div>
+            </div>
+
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              {SKILLS_SUGGESTIONS.map(s => (
-                <button key={s} type="button" onClick={() => toggleSkill(s)} className={form.skills.includes(s) ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'} style={{ borderRadius: '999px' }}>
-                  {s}
-                </button>
-              ))}
+              {SKILLS_SUGGESTIONS.map((skill) => {
+                const isSelected = form.skills.includes(skill);
+                return (
+                  <button
+                    key={skill}
+                    type="button"
+                    onClick={() => toggleSkill(skill)}
+                    className={isSelected ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+                    style={{
+                      borderRadius: '999px',
+                      padding: '6px 14px',
+                      fontSize: '13px',
+                      gap: '6px',
+                    }}
+                  >
+                    {isSelected && <Check size={13} />}
+                    <span>{skill}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          <button className="btn btn-primary btn-lg w-full" onClick={handleSave} disabled={loading} id="profile-save" style={{ justifyContent: 'center' }}>
-            {loading ? <div className="spinner" style={{ width: '18px', height: '18px', borderWidth: '2px' }} /> : <><Save size={16} /> Save Changes</>}
+          {/* Save Button */}
+          <button
+            type="submit"
+            className="btn btn-primary btn-lg w-full"
+            disabled={loading}
+            id="profile-save"
+            style={{ justifyContent: 'center', fontSize: '15.5px' }}
+          >
+            {loading ? (
+              <>
+                <div className="spinner" style={{ width: '18px', height: '18px', borderWidth: '2px' }} />
+                <span>Saving Profile...</span>
+              </>
+            ) : (
+              <>
+                <Save size={16} />
+                <span>Save Profile & Preferences</span>
+              </>
+            )}
           </button>
-        </div>
+        </form>
       </div>
-    </div>
+    </AppLayout>
   );
 }
