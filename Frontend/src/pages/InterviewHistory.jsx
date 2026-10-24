@@ -97,8 +97,7 @@ export default function InterviewHistory() {
             Interview History
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '14.5px' }}>
-            Manage past technical evaluations, review diagnostic reports, and resume drafts.
-          </p>
+Manage your report history, review past reports, track progress, and access previous results anytime.          </p>
         </div>
 
         <button

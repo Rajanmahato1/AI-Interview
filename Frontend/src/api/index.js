@@ -25,7 +25,9 @@ export const interviewApi = {
   nextQuestion: (id) => api.post(`/interviews/${id}/next-question`),
   submitAnswer: (id, data) => api.post(`/interviews/${id}/answers`, data),
   evaluateAnswer: (id, answerId) => api.post(`/interviews/${id}/answers/${answerId}/evaluate`),
-  complete: (id) => api.post(`/interviews/${id}/complete`),
+  complete: (id, data) => api.post(`/interviews/${id}/complete`, data),
+  finish: (id) => api.post(`/interviews/${id}/finish`),
+  getReport: (id) => api.get(`/interviews/${id}/report`),
   resume: (id) => api.post(`/interviews/${id}/resume`),
   delete: (id) => api.delete(`/interviews/${id}`),
 };
@@ -35,6 +37,7 @@ export const reportApi = {
   getAll: (params) => api.get('/reports', { params }),
   getOne: (id) => api.get(`/reports/${id}`),
   getPdfUrl: (id) => `/api/reports/${id}/pdf`,
+  retry: (id) => api.post(`/reports/${id}/retry`),
 };
 
 // ── Profile ──────────────────────────────────────────────────────────

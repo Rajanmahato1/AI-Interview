@@ -51,21 +51,7 @@ export default function Navbar({ isAppView = false, onToggleMobileSidebar = null
           className="navbar-brand"
           style={{ textDecoration: 'none' }}
         >
-          <div
-            style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '9px',
-              background: 'var(--gradient-accent)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#ffffff',
-              boxShadow: '0 2px 10px rgba(124, 58, 237, 0.4)',
-            }}
-          >
-            <Zap size={18} fill="#ffffff" stroke="none" />
-          </div>
+          
           <span>
             Interview<span style={{ color: 'var(--accent)' }}>AI</span>
           </span>
@@ -78,7 +64,7 @@ export default function Navbar({ isAppView = false, onToggleMobileSidebar = null
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
+            gap: '1px',
             marginLeft: '32px',
           }}
           className="desktop-nav-links"

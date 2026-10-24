@@ -25,37 +25,37 @@ const features = [
     icon: Brain,
     title: 'AI Questions',
     badge: 'Multi-LLM Engine',
-    desc: 'Dynamic, non-repetitive technical questions powered by Gemini, DeepSeek & Groq with automatic fallback for high reliability.',
+    desc: 'Get unique technical questions  powered by AI.',
   },
   {
     icon: Target,
     title: 'Role-Based Practice',
     badge: 'Custom Tracks',
-    desc: 'Targeted simulations tailored for Frontend, Backend, Full Stack, System Design, DevOps, or customized paste-in Job Descriptions.',
+    desc: 'Practice questions for your chosen role.',
   },
   {
     icon: Sparkles,
     title: 'AI Evaluation',
     badge: 'Instant Grading',
-    desc: 'Rigorous multidimensional scoring across Correctness, Clarity, Depth, Structure, and Relevance with actionable improvements.',
+    desc: 'Get instant scores and feedback on your answers.',
   },
   {
     icon: BarChart3,
     title: 'Performance Analytics',
     badge: 'Trend Insights',
-    desc: 'Visualize your progress with score trend charts, historical skill breakdowns, radar radar metrics, and weak spot detection.',
+    desc: 'Track your scores and improvement over time.',
   },
   {
     icon: Layers,
     title: 'Adaptive Interviews',
     badge: 'Dynamic Depth',
-    desc: 'Questions dynamically adapt to your previous answers, probing edge cases and technical depth just like senior engineering managers.',
+    desc: 'Get questions based on your previous answers.',
   },
   {
     icon: FileText,
     title: 'Interview Reports',
     badge: 'Executive PDF',
-    desc: 'Receive comprehensive candidate assessment reports complete with performance summaries, topic checklists, and exportable PDFs.',
+    desc: 'View past reports and download your results..',
   },
 ];
 
@@ -63,25 +63,25 @@ const steps = [
   {
     n: '01',
     title: 'Configure Your Session',
-    desc: 'Pick your target role, seniority level (fresher to senior), tech stack, and paste target job descriptions.',
+    desc: 'Choose your role, skill level, and technology stack.',
     icon: Target,
   },
   {
     n: '02',
     title: 'Interactive AI Interview',
-    desc: 'Answer realistic technical and architectural questions under realistic timed conditions.',
+    desc: 'Answer realistic technical questions with AI.',
     icon: Code2,
   },
   {
     n: '03',
     title: 'Deep Multi-Metric Feedback',
-    desc: 'Get immediate granular evaluation for each question with identified strengths and concrete improvements.',
+    desc: 'Review your scores, strengths, and areas to improve.',
     icon: Sparkles,
   },
   {
     n: '04',
     title: 'Comprehensive Analytics & PDF',
-    desc: 'Review your personalized evaluation report, study recommendations, and track long-term readiness.',
+    desc: 'View report history and track your improvement.',
     icon: Award,
   },
 ];
@@ -118,25 +118,7 @@ export default function Landing() {
         />
 
         <div className="container" style={{ position: 'relative', zIndex: 1, textAlign: 'center' }}>
-          {/* Top Pill Announcement */}
-          <div
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '6px 16px',
-              borderRadius: '999px',
-              background: 'var(--accent-subtle)',
-              border: '1px solid var(--border-accent)',
-              marginBottom: '28px',
-              fontSize: '13px',
-              fontWeight: 600,
-              color: 'var(--accent-light)',
-            }}
-          >
-            <Sparkles size={14} />
-            <span>Next-Gen Technical Interview Practice Platform</span>
-          </div>
+        
 
           {/* Main Headline */}
           <h1
@@ -149,8 +131,8 @@ export default function Landing() {
               margin: '0 auto 24px',
             }}
           >
-            Ace Your Next <br />
-            <span className="text-gradient">Technical Interview</span>
+            Land Your Dream  <br />
+            <span className="text-gradient">Tech Job Today</span>
           </h1>
 
           {/* Supporting Text */}
@@ -163,7 +145,7 @@ export default function Landing() {
               lineHeight: 1.7,
             }}
           >
-            Master technical, behavioral, and system design interviews with AI-powered questions, real-time evaluations, adaptive follow-ups, and in-depth performance analytics.
+           Your personal AI interview coach for tech, behavioral, and system design rounds. Get instant feedback, adaptive follow-ups, and data-driven insights to walk in with total confidence.
           </p>
 
           {/* CTA Buttons */}
@@ -186,7 +168,7 @@ export default function Landing() {
           </div>
 
           {/* Trust Highlights */}
-          <div
+          {/* <div
             style={{
               display: 'flex',
               justifyContent: 'center',
@@ -207,7 +189,7 @@ export default function Landing() {
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
               <CheckCircle2 size={16} color="var(--success)" /> No Credit Card Required
             </span>
-          </div>
+          </div> */}
 
           {/* Product Preview / Mockup */}
           <div
@@ -240,7 +222,7 @@ export default function Landing() {
                 <span style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#f59e0b', display: 'inline-block' }} />
                 <span style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
               </div>
-              <div
+              {/* <div
                 style={{
                   fontSize: '12px',
                   fontWeight: 600,
@@ -253,7 +235,7 @@ export default function Landing() {
                 }}
               >
                 interview-ai.app/live-session
-              </div>
+              </div> */}
               <div style={{ display: 'flex', gap: '6px' }}>
                 <span className="badge badge-success">● AI Active</span>
               </div>
@@ -487,9 +469,7 @@ export default function Landing() {
           }}
         />
         <div className="container" style={{ position: 'relative', zIndex: 1, textAlign: 'center' }}>
-          <span className="badge badge-accent" style={{ marginBottom: '16px' }}>
-            Ready to Level Up?
-          </span>
+         
           <h2 style={{ fontSize: 'clamp(32px, 5vw, 48px)', fontWeight: 800, marginBottom: '16px' }}>
             Start Practicing in Under 60 Seconds
           </h2>

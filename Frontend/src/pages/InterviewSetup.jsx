@@ -34,18 +34,23 @@ const schema = z.object({
 const TECH_SUGGESTIONS = [
   'React',
   'Node.js',
-  'Python',
   'TypeScript',
   'Java',
-  'System Design',
   'SQL',
   'MongoDB',
-  'Docker',
-  'AWS',
-  'Kubernetes',
-  'GraphQL',
   'DSA',
   'Next.js',
+  'Adobe Photoshop',
+  'Adobe Illustrator',
+  "Figma",
+  "Canva",
+  "UI Design",
+  "UX Design",
+  "Ethical Hacking",
+  "Network Security",
+  "Linux",
+  "Kali Linux",
+  "Penetration Testing",
 ];
 
 export default function InterviewSetup() {
@@ -163,7 +168,7 @@ export default function InterviewSetup() {
                 <input
                   {...register('targetRole')}
                   className={`form-input ${errors.targetRole ? 'error' : ''}`}
-                  placeholder="e.g. Senior Frontend Engineer, Full Stack React/Node Developer, System Architect"
+                  placeholder="e.g. Frontend Developer, Backend Developer, Full-Stack Developer, Graphic Designer, Cybersecurity"S
                   id="setup-role"
                 />
                 {errors.targetRole && (
@@ -415,7 +420,7 @@ export default function InterviewSetup() {
             </div>
 
             <div className="form-group" style={{ marginBottom: '20px' }}>
-              <label className="form-label" htmlFor="setup-jd">
+              <label className="form-label" htmlFor="setup-jd" required>
                 Target Job Description (Optional)
               </label>
               <textarea

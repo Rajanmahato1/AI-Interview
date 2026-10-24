@@ -19,11 +19,14 @@ const interviewReportSchema = new mongoose.Schema({
   detailedFeedback: { type: String, default: '' },
   performanceSummary: { type: String, default: '' },
   nextSteps: [{ type: String }],
-  reportStatus: { type: String, enum: ['generating', 'completed', 'failed'], default: 'generating' },
+  reportStatus: { type: String, enum: ['pending', 'processing', 'generating', 'completed', 'failed'], default: 'pending' },
+  errorMessage: { type: String, default: '' },
+  generationToken: { type: String, default: '', select: false },
   generatedAt: { type: Date, default: null },
   providerUsed: { type: String, default: '' },
   modelUsed: { type: String, default: '' },
 }, { timestamps: true });
 
 interviewReportSchema.index({ userId: 1, createdAt: -1 });
+interviewReportSchema.index({ reportStatus: 1, updatedAt: 1 });
 module.exports = mongoose.model('InterviewReport', interviewReportSchema);

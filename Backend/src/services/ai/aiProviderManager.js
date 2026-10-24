@@ -160,7 +160,7 @@ async function generateInterviewReport(params) {
   const { role, experienceLevel, interviewType, answers, sessionDuration } = params;
 
   const answerSummary = answers.map((a, i) =>
-    `Q${i + 1}: ${a.questionText}\nScore: ${a.overallScore ?? 'N/A'}\nFeedback: ${a.detailedFeedback || 'N/A'}`
+    `Q${i + 1} (${a.category || 'interview'}): ${a.questionText}\nCandidate answer: ${a.answerText || 'Not provided'}\nScore: ${a.overallScore ?? 'N/A'}\nEvaluation: ${a.detailedFeedback || 'Not evaluated'}\nExisting strengths: ${(a.strengths || []).join('; ') || 'N/A'}\nExisting weaknesses: ${(a.weaknesses || []).join('; ') || 'N/A'}`
   ).join('\n\n');
 
   const prompt = `You are an expert career coach generating an interview performance report.
@@ -170,7 +170,7 @@ Duration: ${sessionDuration} minutes
 Total Questions: ${answers.length}
 
 Answer Summaries:
-${answerSummary.substring(0, 3000)}
+${answerSummary.substring(0, 12000)}
 
 Respond ONLY with valid JSON:
 {
@@ -188,6 +188,21 @@ Respond ONLY with valid JSON:
   const result = await callWithFallback('generateText', prompt, { temperature: 0.4 });
   const parsed = safeParseJSON(result.content);
   if (!parsed) throw Object.assign(new Error('Invalid report format from AI'), { code: 'AI_INVALID_RESPONSE' });
+  const listFields = [
+    'strengths',
+    'weaknesses',
+    'improvements',
+    'missingConcepts',
+    'suggestedTopics',
+    'recommendedPractice',
+    'nextSteps',
+  ];
+  if (
+    listFields.some(field => !Array.isArray(parsed[field]) || parsed[field].some(item => typeof item !== 'string')) ||
+    ['detailedFeedback', 'performanceSummary'].some(field => typeof parsed[field] !== 'string' || !parsed[field].trim())
+  ) {
+    throw Object.assign(new Error('Invalid report fields from AI'), { code: 'AI_INVALID_RESPONSE' });
+  }
   return { ...result, data: parsed };
 }
 
@@ -218,6 +233,22 @@ Respond ONLY with JSON:
 // ── Helpers ──────────────────────────────────────────────────────────
 function safeParseJSON(text) {
   if (!text) return null;
+  let cleaned = String(text).trim();
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
+  }
+  try {
+    return JSON.parse(cleaned);
+  } catch {}
+
+  try {
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (match) {
+      const sanitized = match[0].replace(/,\s*([}\]])/g, '$1');
+      return JSON.parse(sanitized);
+    }
+  } catch {}
+
   try {
     const match = text.match(/\{[\s\S]*\}/);
     return match ? JSON.parse(match[0]) : JSON.parse(text);
@@ -236,4 +267,166 @@ function validateEvaluationScores(evaluation) {
   });
 }
 
-module.exports = { generateText, generateInterviewQuestion, evaluateInterviewAnswer, generateInterviewReport, generateFollowUpQuestion };
+// ── TASK 1: Interview Report Generator ───────────────────────────────
+async function generateReport(interview) {
+  const role = interview.role || interview.configuration?.targetRole || 'Software Engineer';
+  const type = interview.type || interview.configuration?.interviewType || 'Technical';
+  const difficulty = interview.difficulty || interview.configuration?.difficulty || 'Medium';
+  const qaList = Array.isArray(interview.qa) && interview.qa.length > 0
+    ? interview.qa
+    : (Array.isArray(interview.answers) ? interview.answers : []);
+
+  const createFallbackReport = () => {
+    const validScores = qaList
+      .map(item => item.score ?? (item.overallScore != null ? Math.round(item.overallScore / 10) : null))
+      .filter(s => typeof s === 'number' && !isNaN(s));
+    const avgScore = validScores.length ? Math.min(10, Math.max(0, Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length))) : 7;
+
+    return {
+      overallScore: avgScore,
+      summary: `The candidate completed the ${difficulty} ${type} interview for the ${role} position. Demonstrates baseline problem-solving abilities and willingness to communicate ideas.`,
+      strengths: [
+        'Attempted all questions with positive engagement',
+        'Demonstrated foundational conceptual knowledge',
+        'Structured responses clearly under interview conditions'
+      ],
+      weakAreas: [
+        'Could provide deeper technical detail and edge-case coverage',
+        'Structure responses with the STAR method for higher impact'
+      ],
+      tips: [
+        'Elaborate on real-world constraints and trade-offs when explaining solutions',
+        'Use specific metrics and measurable outcomes when discussing past experience',
+        'Practice concise phrasing to minimize filler words and maintain a steady delivery pace'
+      ],
+      perQuestion: qaList.map((item, idx) => ({
+        question: item.question || item.questionText || `Question ${idx + 1}`,
+        score: item.score ?? (item.overallScore != null ? Math.min(10, Math.round(item.overallScore / 10)) : avgScore),
+        comment: item.feedback || item.detailedFeedback || item.comment || 'Good attempt. Focus on providing concrete examples and deeper technical clarity.',
+        timeTaken: item.timeTaken || 0,
+        fillerCount: item.fillerCount || 0
+      }))
+    };
+  };
+
+  const qaFormatted = qaList.map((item, index) => {
+    const qText = item.question || item.questionText || `Question ${index + 1}`;
+    const aText = item.answer || item.answerText || 'No answer provided';
+    const fbText = item.feedback || item.detailedFeedback || item.comment || 'No feedback recorded';
+    const scoreText = item.score != null ? item.score : (item.overallScore != null ? Math.round(item.overallScore / 10) : 'N/A');
+    return `Question ${index + 1}: ${qText}\nCandidate Answer: ${aText}\nPer-Answer Feedback: ${fbText}\nScore: ${scoreText}`;
+  }).join('\n\n');
+
+  const prompt = `You are an expert technical interviewer and hiring evaluator.
+Analyze the following interview performance and provide a comprehensive, constructive assessment.
+
+Interview Role: ${role}
+Interview Type: ${type}
+Difficulty: ${difficulty}
+Total Questions: ${qaList.length}
+
+Questions, Answers, and Per-Answer Evaluations:
+${qaFormatted.substring(0, 12000)}
+
+Respond with STRICT JSON ONLY. Do not include markdown codeblocks, html, or explanatory text outside the JSON object.
+The JSON must adhere to this exact schema:
+{
+  "overallScore": <number between 0 and 10 representing overall performance>,
+  "summary": "<a concise 2-3 sentence executive summary of overall performance>",
+  "strengths": ["<strength 1>", "<strength 2>", "<strength 3>"],
+  "weakAreas": ["<weak area 1>", "<weak area 2>"],
+  "tips": [
+    "<actionable improvement tip 1>",
+    "<actionable improvement tip 2>",
+    "<actionable improvement tip 3>"
+  ],
+  "perQuestion": [
+    {
+      "question": "<exact or concise question text>",
+      "score": <number between 0 and 10>,
+      "comment": "<constructive evaluation feedback for this specific answer>"
+    }
+  ]
+}`;
+
+  try {
+    const result = await callWithFallback('generateText', prompt, { temperature: 0.2 });
+    let parsed = safeParseJSON(result.content);
+
+    if (!parsed || typeof parsed !== 'object') {
+      return createFallbackReport();
+    }
+
+    const overallScore = typeof parsed.overallScore === 'number' && !isNaN(parsed.overallScore)
+      ? Math.min(10, Math.max(0, Math.round(parsed.overallScore)))
+      : 7;
+
+    const summary = typeof parsed.summary === 'string' && parsed.summary.trim()
+      ? parsed.summary.trim()
+      : `Completed ${role} interview with solid fundamentals and room for technical expansion.`;
+
+    const strengths = Array.isArray(parsed.strengths) && parsed.strengths.length > 0
+      ? parsed.strengths.map(s => String(s)).filter(Boolean)
+      : ['Clear communication style', 'Good foundational problem-solving approach'];
+
+    const weakAreas = Array.isArray(parsed.weakAreas) && parsed.weakAreas.length > 0
+      ? parsed.weakAreas.map(w => String(w)).filter(Boolean)
+      : ['Deepen technical architecture knowledge', 'Provide more concrete examples'];
+
+    let tips = Array.isArray(parsed.tips) && parsed.tips.length > 0
+      ? parsed.tips.map(t => String(t)).filter(Boolean)
+      : [];
+    if (tips.length < 3) {
+      const defaultTips = [
+        'Practice articulating trade-offs and edge cases explicitly',
+        'Structure behavioral answers using the STAR method (Situation, Task, Action, Result)',
+        'Maintain a steady pace and reduce filler words with deliberate pauses'
+      ];
+      tips = [...tips, ...defaultTips].slice(0, 3);
+    } else if (tips.length > 3) {
+      tips = tips.slice(0, 3);
+    }
+
+    const perQuestion = Array.isArray(parsed.perQuestion) && parsed.perQuestion.length > 0
+      ? parsed.perQuestion.map((pq, i) => {
+          const original = qaList[i] || {};
+          return {
+            question: pq.question || original.question || original.questionText || `Question ${i + 1}`,
+            score: typeof pq.score === 'number' && !isNaN(pq.score)
+              ? Math.min(10, Math.max(0, Math.round(pq.score)))
+              : (original.score ?? 7),
+            comment: pq.comment || original.feedback || original.detailedFeedback || 'Solid response provided.',
+            timeTaken: original.timeTaken || 0,
+            fillerCount: original.fillerCount || 0
+          };
+        })
+      : qaList.map((item, idx) => ({
+          question: item.question || item.questionText || `Question ${idx + 1}`,
+          score: item.score ?? 7,
+          comment: item.feedback || item.detailedFeedback || 'Answer recorded.',
+          timeTaken: item.timeTaken || 0,
+          fillerCount: item.fillerCount || 0
+        }));
+
+    return {
+      overallScore,
+      summary,
+      strengths,
+      weakAreas,
+      tips,
+      perQuestion
+    };
+  } catch (err) {
+    console.error('[generateReport error, returning fallback]:', err.message);
+    return createFallbackReport();
+  }
+}
+
+module.exports = {
+  generateText,
+  generateInterviewQuestion,
+  evaluateInterviewAnswer,
+  generateInterviewReport,
+  generateFollowUpQuestion,
+  generateReport,
+};

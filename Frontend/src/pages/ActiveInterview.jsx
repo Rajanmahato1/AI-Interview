@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { interviewApi } from '../api';
 import toast from 'react-hot-toast';
 import ThemeToggle from '../components/ThemeToggle';
+import useSpeechRecognition from '../hooks/useSpeechRecognition';
+import useSpeechSynthesis from '../hooks/useSpeechSynthesis';
 import {
   Send,
   ChevronRight,
@@ -10,15 +12,15 @@ import {
   Clock,
   Loader2,
   CheckCircle,
-  AlertCircle,
-  HelpCircle,
   Zap,
-  ArrowRight,
   TrendingUp,
-  Award,
   Sparkles,
   CheckCircle2,
-  XCircle,
+  Mic,
+  MicOff,
+  Volume2,
+  VolumeX,
+  RotateCcw,
 } from 'lucide-react';
 
 function Timer({ expiresAt }) {
@@ -74,13 +76,59 @@ export default function ActiveInterview() {
   const navigate = useNavigate();
   const [session, setSession] = useState(null);
   const [question, setQuestion] = useState(null);
-  const [questions, setQuestions] = useState([]);
   const [answer, setAnswer] = useState('');
   const [evaluation, setEvaluation] = useState(null);
   const [phase, setPhase] = useState('loading'); // loading | starting | answering | evaluating | evaluated | completed
   const [questionNum, setQuestionNum] = useState(1);
   const [totalQuestions, setTotalQuestions] = useState(10);
+  const [isEnding, setIsEnding] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
+
   const answerRef = useRef(null);
+  const endingRef = useRef(false);
+  const startTimeRef = useRef(Date.now());
+  const preMicTextRef = useRef('');
+
+  // ── Voice Hooks ──────────────────────────────────────────────────────
+  const {
+    transcript,
+    listening,
+    start: startListening,
+    stop: stopListening,
+    reset: resetTranscript,
+    supported: speechRecSupported,
+  } = useSpeechRecognition();
+
+  const {
+    speak,
+    cancel: cancelSpeech,
+    speaking,
+    supported: speechSynthesisSupported,
+  } = useSpeechSynthesis();
+
+  // Keep live transcript updating textarea while remaining editable
+  useEffect(() => {
+    if (listening && transcript) {
+      const base = preMicTextRef.current;
+      const combined = base ? `${base.trim()} ${transcript}` : transcript;
+      setAnswer(combined);
+    }
+  }, [transcript, listening]);
+
+  // Voice mode: Read each new question aloud when ON
+  useEffect(() => {
+    if (voiceMode && question?.questionText && phase === 'answering') {
+      speak(question.questionText);
+    }
+  }, [question, voiceMode, phase, speak]);
+
+  // Cleanup speech on unmount
+  useEffect(() => {
+    return () => {
+      stopListening();
+      cancelSpeech();
+    };
+  }, [stopListening, cancelSpeech]);
 
   // Load session
   useEffect(() => {
@@ -91,13 +139,14 @@ export default function ActiveInterview() {
         setSession(s);
         setTotalQuestions(s.configuration?.questionCount || 10);
         const qs = res.data.questions || [];
-        setQuestions(qs);
         if (s.status === 'draft') {
           setPhase('starting');
         } else if (s.status === 'in_progress' && qs.length > 0) {
-          setQuestion(qs[qs.length - 1]);
+          const currentQ = qs[qs.length - 1];
+          setQuestion(currentQ);
           setQuestionNum(qs.length);
           setPhase('answering');
+          startTimeRef.current = Date.now();
         } else if (s.status === 'completed') {
           setPhase('completed');
         } else {
@@ -117,13 +166,44 @@ export default function ActiveInterview() {
       const res = await interviewApi.start(id);
       setSession(res.data.session);
       setQuestion(res.data.question);
-      setQuestions([res.data.question]);
       setQuestionNum(1);
       setPhase('answering');
+      startTimeRef.current = Date.now();
+      resetTranscript();
       setTimeout(() => answerRef.current?.focus(), 100);
     } catch (err) {
       toast.error(err.response?.data?.error?.message || 'Failed to start interview');
       setPhase('starting');
+    }
+  };
+
+  const toggleMic = () => {
+    if (!speechRecSupported) {
+      toast.error('Speech recognition is not supported in this browser. Please type your answer.');
+      return;
+    }
+    if (listening) {
+      stopListening();
+    } else {
+      preMicTextRef.current = answer;
+      resetTranscript();
+      startListening();
+    }
+  };
+
+  const toggleVoiceMode = () => {
+    const next = !voiceMode;
+    setVoiceMode(next);
+    if (!next) {
+      cancelSpeech();
+    } else if (question?.questionText) {
+      speak(question.questionText);
+    }
+  };
+
+  const handleRepeatQuestion = () => {
+    if (question?.questionText) {
+      speak(question.questionText);
     }
   };
 
@@ -132,12 +212,21 @@ export default function ActiveInterview() {
       toast.error('Please write an answer before submitting');
       return;
     }
+
+    stopListening();
+    cancelSpeech();
+
+    const elapsedSeconds = Math.max(1, Math.round((Date.now() - (startTimeRef.current || Date.now())) / 1000));
+    const fillers = (answer.match(/\b(um|uh|like|you know)\b/gi) || []).length;
+
     setPhase('evaluating');
     try {
-      // 1. Submit answer
+      // 1. Submit answer with timeTaken & fillerCount
       const submitRes = await interviewApi.submitAnswer(id, {
         questionId: question._id,
         answerText: answer,
+        timeTaken: elapsedSeconds,
+        fillerCount: fillers,
       });
       const answerId = submitRes.data.answer._id;
 
@@ -151,29 +240,49 @@ export default function ActiveInterview() {
     }
   };
 
+  const finishInterview = async () => {
+    if (endingRef.current) return;
+    endingRef.current = true;
+    setIsEnding(true);
+    stopListening();
+    cancelSpeech();
+    try {
+      await interviewApi.finish(id);
+      toast.success('Interview ended. Generating your report...');
+      navigate(`/reports/${id}`);
+    } catch (err) {
+      console.warn('POST /finish failed, falling back to /complete:', err);
+      try {
+        const res = await interviewApi.complete(id);
+        navigate(`/reports/${res.data?.reportId || id}`);
+      } catch (fErr) {
+        toast.error(err.response?.data?.error?.message || err.message || 'Failed to complete session. Please try again.');
+        endingRef.current = false;
+        setIsEnding(false);
+      }
+    }
+  };
+
   const nextQuestion = async () => {
     if (questionNum >= totalQuestions) {
-      // Session Complete
-      try {
-        await interviewApi.complete(id);
-        toast.success('Interview complete! Generating performance report...');
-        navigate(`/reports/${id}`);
-      } catch {
-        toast.error('Failed to complete session');
-        navigate(`/reports/${id}`);
-      }
+      await finishInterview();
       return;
     }
 
+    stopListening();
+    cancelSpeech();
     setPhase('loading');
     setAnswer('');
     setEvaluation(null);
+    preMicTextRef.current = '';
+    resetTranscript();
+
     try {
       const res = await interviewApi.nextQuestion(id);
       setQuestion(res.data.question);
-      setQuestions((prev) => [...prev, res.data.question]);
       setQuestionNum(res.data.questionNumber);
       setPhase('answering');
+      startTimeRef.current = Date.now();
       setTimeout(() => answerRef.current?.focus(), 100);
     } catch (err) {
       toast.error(err.response?.data?.error?.message || 'Failed to load next question');
@@ -185,13 +294,7 @@ export default function ActiveInterview() {
     if (!window.confirm('Are you sure you want to conclude the interview now? Your submitted answers will be scored and saved.')) {
       return;
     }
-    try {
-      await interviewApi.complete(id);
-      toast.success('Interview ended. Generating report...');
-      navigate(`/reports/${id}`);
-    } catch {
-      navigate('/history');
-    }
+    await finishInterview();
   };
 
   const scoreColor = (score) => {
@@ -420,10 +523,11 @@ export default function ActiveInterview() {
               type="button"
               className="btn btn-danger btn-sm"
               onClick={endInterview}
+              disabled={isEnding}
               id="end-interview-btn"
               style={{ gap: '6px' }}
             >
-              <Flag size={14} /> End Early
+              <Flag size={14} /> {isEnding ? 'Ending…' : 'End Interview'}
             </button>
           </div>
         </div>
@@ -446,17 +550,46 @@ export default function ActiveInterview() {
         {/* Question Card */}
         {question && (
           <div className="card" style={{ marginBottom: '24px', borderLeft: '4px solid var(--accent)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
-              <span className="badge badge-accent">Question {questionNum} of {totalQuestions}</span>
-              {question.category && (
-                <span className="badge badge-info" style={{ textTransform: 'capitalize' }}>
-                  {question.category}
-                </span>
-              )}
-              {question.technology && (
-                <span className="badge badge-neutral">{question.technology}</span>
-              )}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span className="badge badge-accent">Question {questionNum} of {totalQuestions}</span>
+                {question.category && (
+                  <span className="badge badge-info" style={{ textTransform: 'capitalize' }}>
+                    {question.category}
+                  </span>
+                )}
+                {question.technology && (
+                  <span className="badge badge-neutral">{question.technology}</span>
+                )}
+              </div>
+
+              {/* Voice controls for question */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={toggleVoiceMode}
+                  className={`btn btn-sm ${voiceMode ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ gap: '6px', fontSize: '12px' }}
+                  title="When Voice Mode is ON, the AI reads each new question aloud automatically."
+                >
+                  {voiceMode ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                  <span>Voice Mode: {voiceMode ? 'ON' : 'OFF'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleRepeatQuestion}
+                  disabled={speaking}
+                  className="btn btn-secondary btn-sm"
+                  style={{ gap: '6px', fontSize: '12px' }}
+                  title="Read question aloud"
+                >
+                  <RotateCcw size={13} />
+                  <span>{speaking ? 'Reading...' : 'Repeat Question'}</span>
+                </button>
+              </div>
             </div>
+
             <h2
               style={{
                 fontSize: '20px',
@@ -473,21 +606,63 @@ export default function ActiveInterview() {
         {/* Answer Input Area */}
         {(phase === 'answering' || phase === 'evaluating') && (
           <div className="card" style={{ marginBottom: '24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
               <label htmlFor="answer-textarea" className="form-label" style={{ margin: 0 }}>
                 Your Technical Response
               </label>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                {answer.length} characters • Markdown/code blocks welcome
-              </span>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                {/* Mic button with pulsing animation */}
+                <button
+                  type="button"
+                  onClick={toggleMic}
+                  className={`btn btn-sm ${listening ? 'btn-danger' : 'btn-secondary'}`}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                    borderRadius: '8px',
+                    padding: '6px 14px',
+                    background: listening ? '#ef4444' : undefined,
+                    color: listening ? '#ffffff' : undefined,
+                    boxShadow: listening ? '0 0 14px rgba(239, 68, 68, 0.6)' : undefined,
+                    animation: listening ? 'pulse 1.5s infinite' : undefined,
+                    transition: 'all 0.2s ease',
+                  }}
+                  id="mic-btn"
+                  title={listening ? 'Click to stop listening' : 'Click to speak your answer'}
+                >
+                  {listening ? <MicOff size={15} /> : <Mic size={15} />}
+                  <span>{listening ? 'Listening... (Stop)' : 'Voice Input'}</span>
+                </button>
+
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                  {answer.length} chars • Markdown welcome
+                </span>
+              </div>
             </div>
+
+            {!speechRecSupported && (
+              <div style={{ marginBottom: '10px', padding: '8px 12px', borderRadius: '6px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                Speech recognition is not supported in this browser. You can type your answer below.
+              </div>
+            )}
+
+            {listening && (
+              <div style={{ marginBottom: '10px', padding: '8px 12px', borderRadius: '6px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', color: '#ef4444' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', display: 'inline-block', animation: 'pulse 1s infinite' }} />
+                <span>Microphone active: Speaking live into your answer. You can edit text freely below anytime.</span>
+              </div>
+            )}
 
             <textarea
               ref={answerRef}
               className="answer-editor"
               value={answer}
               onChange={(e) => setAnswer(e.target.value)}
-              placeholder="Provide a structured, comprehensive answer with architectural decisions, trade-offs, and examples..."
+              placeholder="Provide a structured, comprehensive answer with architectural decisions, trade-offs, and examples... (You can speak or type freely)"
               disabled={phase === 'evaluating'}
               id="answer-textarea"
             />

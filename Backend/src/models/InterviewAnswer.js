@@ -26,6 +26,8 @@ const interviewAnswerSchema = new mongoose.Schema({
   detailedFeedback: { type: String, default: '' },
   providerUsed: { type: String, default: '' },
   modelUsed: { type: String, default: '' },
+  timeTaken: { type: Number, default: 0 },
+  fillerCount: { type: Number, default: 0 },
   submittedAt: { type: Date, default: Date.now },
   evaluatedAt: { type: Date, default: null },
   idempotencyKey: { type: String, unique: true, sparse: true },

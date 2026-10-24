@@ -26,7 +26,31 @@ const interviewSessionSchema = new mongoose.Schema({
   currentQuestionIndex: { type: Number, default: 0 },
   questionCount: { type: Number, default: 0 },
   overallScore: { type: Number, default: null },
-  reportStatus: { type: String, enum: ['pending', 'generating', 'completed', 'failed'], default: 'pending' },
+  totalScore: { type: Number, default: null },
+  reportStatus: { type: String, enum: ['pending', 'processing', 'generating', 'completed', 'failed'], default: 'pending' },
+  qa: [{
+    question: { type: String, default: '' },
+    answer: { type: String, default: '' },
+    feedback: { type: String, default: '' },
+    score: { type: Number, default: null },
+    timeTaken: { type: Number, default: 0 },
+    fillerCount: { type: Number, default: 0 },
+  }],
+  report: {
+    overallScore: { type: Number, default: null },
+    summary: { type: String, default: '' },
+    strengths: [{ type: String }],
+    weakAreas: [{ type: String }],
+    tips: [{ type: String }],
+    perQuestion: [{
+      question: { type: String, default: '' },
+      score: { type: Number, default: null },
+      comment: { type: String, default: '' },
+      timeTaken: { type: Number, default: 0 },
+      fillerCount: { type: Number, default: 0 },
+    }],
+    generatedAt: { type: Date, default: null },
+  },
 }, { timestamps: true });
 
 interviewSessionSchema.index({ userId: 1, createdAt: -1 });
