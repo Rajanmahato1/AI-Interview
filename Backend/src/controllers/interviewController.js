@@ -339,10 +339,9 @@ const completeSession = async (req, res, next) => {
 // ── POST /api/interviews/:id/finish (TASK 1) ────────────────────────
 const finishSession = async (req, res, next) => {
   try {
-    console.log(`[FINISH_SESSION] Finish requested: id=${req.params.id}, userId=${req.user?._id}`);
+    console.log(`[FINISH] id=${req.params.id} userId=${req.user?._id}`);
 
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      console.log(`[FINISH_SESSION] Invalid ID format: ${req.params.id}`);
       throw new AppError(`Invalid interview ID: ${req.params.id}`, 400, 'INVALID_ID');
     }
 
@@ -355,7 +354,7 @@ const finishSession = async (req, res, next) => {
     }
 
     if (!session) {
-      console.log(`[FINISH_SESSION] Session not found: ${req.params.id}`);
+      console.log(`[FINISH] Session not found: ${req.params.id}`);
       throw new AppError('Interview session not found', 404, 'NOT_FOUND');
     }
 
@@ -363,8 +362,18 @@ const finishSession = async (req, res, next) => {
     const reqUserId = req.user._id ? req.user._id.toString() : '';
 
     if (sessionUserId !== reqUserId) {
-      console.log(`[FINISH_SESSION] Forbidden: session owned by ${sessionUserId}, caller is ${reqUserId}`);
       throw new AppError('You are not authorized to finish this interview', 403, 'FORBIDDEN');
+    }
+
+    // ── Idempotency: already completed with a report — return immediately ──
+    if (session.status === 'completed' && session.report && session.report.summary) {
+      console.log(`[FINISH] Already completed, returning cached report: ${session._id}`);
+      return res.json({
+        success: true,
+        report: session.report,
+        session,
+        totalScore: session.totalScore,
+      });
     }
 
     const [questions, answers] = await Promise.all([
@@ -398,11 +407,14 @@ const finishSession = async (req, res, next) => {
 
     const computedTotalScore = scoredCount > 0 ? Math.round(scoreSum / scoredCount) : 7;
 
+    // Use session.qa as fallback when InterviewAnswer docs don't exist
+    const qaForReport = qa.length > 0 ? qa : (session.qa || []);
+
     const reportData = await ai.generateReport({
       role: session.configuration?.targetRole || 'Software Engineer',
       type: session.configuration?.interviewType || 'Technical',
       difficulty: session.configuration?.difficulty || 'Medium',
-      qa,
+      qa: qaForReport,
     });
 
     const finalScore = typeof reportData.overallScore === 'number' ? reportData.overallScore : computedTotalScore;
@@ -417,24 +429,24 @@ const finishSession = async (req, res, next) => {
       generatedAt: new Date(),
     };
 
-    // Save atomically using findByIdAndUpdate
+    // Build update — only overwrite qa when we actually have answers
+    const sessionUpdate = {
+      status: 'completed',
+      completedAt: session.completedAt || new Date(),
+      totalScore: finalScore,
+      overallScore: finalScore * 10,
+      report: reportObj,
+      reportStatus: 'completed',
+    };
+    if (qa.length > 0) sessionUpdate.qa = qa;
+
     const updatedSession = await InterviewSession.findByIdAndUpdate(
       session._id,
-      {
-        $set: {
-          status: 'completed',
-          completedAt: new Date(),
-          totalScore: finalScore,
-          overallScore: finalScore * 10,
-          qa: qa,
-          report: reportObj,
-          reportStatus: 'completed',
-        },
-      },
+      { $set: sessionUpdate },
       { new: true }
     );
 
-    console.log(`[FINISH_SESSION] Successfully finished & saved report: sessionId=${updatedSession._id}, totalScore=${finalScore}`);
+    console.log(`[FINISH] Saved: sessionId=${updatedSession._id} score=${finalScore}`);
 
     // Sync InterviewReport collection for backwards compatibility
     try {
@@ -454,7 +466,7 @@ const finishSession = async (req, res, next) => {
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
     } catch (rErr) {
-      console.warn('[REPORT_SYNC_WARN]', rErr.message);
+      console.warn('[FINISH] InterviewReport sync warn:', rErr.message);
     }
 
     res.json({
@@ -469,10 +481,9 @@ const finishSession = async (req, res, next) => {
 // ── GET /api/interviews/:id/report (TASK 1) ─────────────────────────
 const getInterviewReport = async (req, res, next) => {
   try {
-    console.log(`[GET_REPORT] Report requested: id=${req.params.id}, userId=${req.user?._id}`);
+    console.log(`[GET_REPORT] id=${req.params.id} userId=${req.user?._id}`);
 
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      console.log(`[GET_REPORT] Invalid interview ID format: ${req.params.id}`);
       throw new AppError(`Invalid interview ID: ${req.params.id}`, 400, 'INVALID_ID');
     }
 
@@ -483,12 +494,12 @@ const getInterviewReport = async (req, res, next) => {
       const reportDoc = await InterviewReport.findById(req.params.id);
       if (reportDoc && reportDoc.sessionId) {
         session = await InterviewSession.findById(reportDoc.sessionId);
-        console.log(`[GET_REPORT] Resolved session ${session?._id} via InterviewReport ${req.params.id}`);
+        console.log(`[GET_REPORT] Resolved via InterviewReport ${req.params.id} -> session ${session?._id}`);
       }
     }
 
     if (!session) {
-      console.log(`[GET_REPORT] Interview session not found: ${req.params.id}`);
+      console.log(`[GET_REPORT] Not found: ${req.params.id}`);
       throw new AppError(`Interview session with ID ${req.params.id} was not found.`, 404, 'NOT_FOUND');
     }
 
@@ -498,16 +509,14 @@ const getInterviewReport = async (req, res, next) => {
     console.log(`[GET_REPORT] Checking ownership: session.userId=${sessionUserId}, req.user._id=${reqUserId}`);
 
     if (sessionUserId !== reqUserId) {
-      console.log(`[GET_REPORT] Forbidden: session owned by ${sessionUserId}, requested by ${reqUserId}`);
       throw new AppError('You are not authorized to view this interview report.', 403, 'FORBIDDEN');
     }
 
     const hasReport = Boolean(session.report && session.report.summary);
-    console.log(`[GET_REPORT] Found session ${session._id}: status=${session.status}, hasReport=${hasReport}`);
+    console.log(`[GET_REPORT] session=${session._id} status=${session.status} hasReport=${hasReport}`);
 
-    // If report already exists and is complete, return it immediately
+    // Report exists — return immediately
     if (hasReport) {
-      console.log(`[GET_REPORT] Returning existing report for session ${session._id}`);
       return res.json({
         success: true,
         report: session.report,
@@ -545,16 +554,17 @@ const getInterviewReport = async (req, res, next) => {
       };
     });
 
-    // Check if session has answers or is completed or has questions
+    // Generate on demand if session has data
     if (session.status === 'completed' || answers.length > 0 || questions.length > 0) {
-      console.log(`[GET_REPORT] Generating missing report on demand for session ${session._id}...`);
+      console.log(`[GET_REPORT] Generating on-demand for session ${session._id}...`);
       const computedTotalScore = scoredCount > 0 ? Math.round(scoreSum / scoredCount) : 7;
 
       const reportData = await ai.generateReport({
         role: session.configuration?.targetRole || 'Software Engineer',
         type: session.configuration?.interviewType || 'Technical',
         difficulty: session.configuration?.difficulty || 'Medium',
-        qa,
+        // Use session.qa as fallback if no InterviewAnswer docs found
+        qa: qa.length > 0 ? qa : (session.qa || []),
       });
 
       const finalScore = typeof reportData.overallScore === 'number' ? reportData.overallScore : computedTotalScore;
@@ -569,23 +579,23 @@ const getInterviewReport = async (req, res, next) => {
         generatedAt: new Date(),
       };
 
+      const sessionUpdate = {
+        status: 'completed',
+        completedAt: session.completedAt || new Date(),
+        totalScore: finalScore,
+        overallScore: finalScore * 10,
+        report: generatedReport,
+        reportStatus: 'completed',
+      };
+      if (qa.length > 0) sessionUpdate.qa = qa;
+
       const updatedSession = await InterviewSession.findByIdAndUpdate(
         session._id,
-        {
-          $set: {
-            status: 'completed',
-            completedAt: session.completedAt || new Date(),
-            totalScore: finalScore,
-            overallScore: finalScore * 10,
-            qa: qa,
-            report: generatedReport,
-            reportStatus: 'completed',
-          },
-        },
+        { $set: sessionUpdate },
         { new: true }
       );
 
-      console.log(`[GET_REPORT] Successfully generated and saved report on demand for session ${session._id}`);
+      console.log(`[GET_REPORT] On-demand report generated and saved for session ${session._id}`);
 
       // Sync InterviewReport
       try {
@@ -605,7 +615,7 @@ const getInterviewReport = async (req, res, next) => {
           { upsert: true, new: true, setDefaultsOnInsert: true }
         );
       } catch (rErr) {
-        console.warn('[REPORT_SYNC_WARN]', rErr.message);
+        console.warn('[GET_REPORT] InterviewReport sync warn:', rErr.message);
       }
 
       return res.json({
