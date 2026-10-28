@@ -13,41 +13,44 @@ const app = express();
 // ── CORS whitelist ─────────────────────────────────────────────────
 // CLIENT_URL can be a comma-separated list for multi-origin support
 // e.g. "http://localhost:5173,https://my-app.vercel.app"
+
+
 const rawOrigins = (config.CLIENT_URL || '')
   .split(',')
-  .map((o) => o.trim())
+  .map((origin) => origin.trim().replace(/\/+$/, ''))
   .filter(Boolean);
 
-
-
-// Always allow localhost:5173 in development
-if (config.NODE_ENV !== 'production' && !rawOrigins.includes('https://ai-interview1-topaz.vercel.app/')) {
-  rawOrigins.push('https://ai-interview1-topaz.vercel.app/');
+if (config.NODE_ENV !== 'production') {
+  rawOrigins.push('https://ai-interview1-topaz.vercel.app');
 }
 
+const allowedOrigins = new Set(rawOrigins);
+
 const corsOptions = {
-  origin: rawOrigins.length > 0
-    ? (origin, cb) => {
-        // Allow requests with no origin (curl, Postman, server-to-server)
-        if (!origin) return cb(null, true);
-        if (rawOrigins.includes(origin)) return cb(null, true);
-        // Allow any vercel.app subdomain as a convenience
-        if (/\.vercel\.app$/.test(origin)) return cb(null, true);
-        return cb(new Error(`CORS: origin ${origin} not allowed`), false);
-      }
-    : '*',
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.has(origin)) {
+      return callback(null, true);
+    }
+
+    console.error('CORS blocked origin:', origin);
+    return callback(new Error('Origin not allowed by CORS'));
+  },
   credentials: true,
 };
 
-// ── Core middleware ────────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cors(corsOptions));
-// Handle CORS preflight for all routes
-app.options('*', cors(corsOptions));
+
 app.use(helmet({
-  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+  crossOriginOpenerPolicy: {
+    policy: 'same-origin-allow-popups',
+  },
 }));
+
+
 if (config.NODE_ENV !== 'test') app.use(morgan('dev'));
 
 // ── Global rate limiter ────────────────────────────────────────────
